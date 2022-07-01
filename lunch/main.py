@@ -24,6 +24,14 @@ def migrations():
     upgrade(config, "head")
 
 
+@app.middleware("http")
+async def request_id(request, next):
+    with debug.request_id_context():
+        response = await next(request)
+        logging.debug("%s: %s", request.url, response.status_code)
+        return response
+
+
 @app.get("/")
 async def topic(db=database.DB):
     cursor = await db.execute(select(database.Topic).order_by(func.random()))
@@ -55,9 +63,13 @@ async def find_topics(url):
                 .on_conflict_do_nothing()
             )
 
+        logging.info("TOPICS: %s", topics)
+
 
 @app.post("/feed")
 async def post_feed(db=database.DB, url: str = Body(...)):
+    logging.info("FEED: %s", url)
+
     await db.execute(insert(database.Feed).values([url]).on_conflict_do_nothing())
     await db.commit()
 
