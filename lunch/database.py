@@ -14,6 +14,12 @@ class Feed(Base):
     url = Column(String, primary_key=True)
 
 
+class Topic(Base):
+    __tablename__ = "topic"
+
+    title = Column(String, primary_key=True)
+
+
 engine = create_async_engine(DATABASE.replace("sqlite://", "sqlite+aiosqlite://"))
 
 factory = sessionmaker(engine, class_=AsyncSession)

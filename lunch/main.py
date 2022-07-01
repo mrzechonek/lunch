@@ -1,3 +1,9 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
+import aiohttp
+import feedparser
 import uvicorn
 from alembic.command import upgrade
 from alembic.config import Config
@@ -7,6 +13,7 @@ from lunch import database, debug
 from pkg_resources import resource_filename
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.sql import select
+from sqlalchemy.sql.expression import func
 
 app = FastAPI()
 
@@ -18,20 +25,43 @@ def migrations():
 
 
 @app.get("/")
-def topic():
-    return "Być czy mieć?"
+async def topic(db=database.DB):
+    cursor = await db.execute(select(database.Topic).order_by(func.random()))
+    try:
+        (topic,) = cursor.first()
+    except TypeError:
+        return "Być czy mieć?"
+    else:
+        return topic.title
 
 
 @app.get("/feed")
 async def get_feed(db=database.DB):
-    feeds = await db.execute(select(database.Feed))
-    return [feed.url for feed, in feeds.all()]
+    cursor = await db.execute(select(database.Feed))
+    return [feed.url for feed, in cursor.all()]
+
+
+async def find_topics(url):
+    async with aiohttp.ClientSession() as session:
+        response = await session.get(url)
+        data = feedparser.parse(await response.text())
+        topics = [entry["title"] for entry in data["entries"]]
+
+        # :-(
+        async with asynccontextmanager(database.connect)() as db:
+            await db.execute(
+                insert(database.Topic)
+                .values([[topic] for topic in topics])
+                .on_conflict_do_nothing()
+            )
 
 
 @app.post("/feed")
 async def post_feed(db=database.DB, url: str = Body(...)):
     await db.execute(insert(database.Feed).values([url]).on_conflict_do_nothing())
     await db.commit()
+
+    asyncio.create_task(find_topics(url))
     return RedirectResponse(app.url_path_for("get_feed"))
 
 

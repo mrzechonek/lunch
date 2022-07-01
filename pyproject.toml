@@ -12,6 +12,8 @@ dependencies = [
     "sqlalchemy",
     "alembic",
     "aiosqlite",
+    "aiohttp",
+    "feedparser",
 ]
 
 [project.scripts]
