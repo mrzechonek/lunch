@@ -9,6 +9,7 @@ description = "Lunch Topic Generator"
 dependencies = [
     "uvicorn",
     "fastapi",
+    "sqlalchemy",
 ]
 
 [project.scripts]
