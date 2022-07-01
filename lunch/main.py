@@ -32,9 +32,15 @@ async def request_id(request, next):
         return response
 
 
+@app.middleware("http")
+async def db_session(request, next):
+    async with database.db_session_context():
+        return await next(request)
+
+
 @app.get("/")
-async def topic(db=database.DB):
-    cursor = await db.execute(select(database.Topic).order_by(func.random()))
+async def topic():
+    cursor = await database.DB.session.execute(select(database.Topic).order_by(func.random()))
     try:
         (topic,) = cursor.first()
     except TypeError:
@@ -44,8 +50,8 @@ async def topic(db=database.DB):
 
 
 @app.get("/feed")
-async def get_feed(db=database.DB):
-    cursor = await db.execute(select(database.Feed))
+async def get_feed():
+    cursor = await database.DB.session.execute(select(database.Feed))
     return [feed.url for feed, in cursor.all()]
 
 
@@ -55,9 +61,8 @@ async def find_topics(url):
         data = feedparser.parse(await response.text())
         topics = [entry["title"] for entry in data["entries"]]
 
-        # :-(
-        async with asynccontextmanager(database.connect)() as db:
-            await db.execute(
+        async with database.db_session_context() as db:
+            await database.DB.session.execute(
                 insert(database.Topic)
                 .values([[topic] for topic in topics])
                 .on_conflict_do_nothing()
@@ -67,11 +72,11 @@ async def find_topics(url):
 
 
 @app.post("/feed")
-async def post_feed(db=database.DB, url: str = Body(...)):
+async def post_feed(url: str = Body(...)):
     logging.info("FEED: %s", url)
 
-    await db.execute(insert(database.Feed).values([url]).on_conflict_do_nothing())
-    await db.commit()
+    await database.DB.session.execute(insert(database.Feed).values([url]).on_conflict_do_nothing())
+    await database.DB.session.commit()
 
     asyncio.create_task(find_topics(url))
     return RedirectResponse(app.url_path_for("get_feed"))
